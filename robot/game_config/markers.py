@@ -52,13 +52,13 @@ class BASE_MARKER: # Base marker class that BOX_MARKER and ARENA_MARKER derive f
     @property
     def bounding_box_color(self) -> tuple:
         if self.type == MARKER_TYPE.ARENA: # If it is a wall
-            return tuple(reversed((125, 249, 225))) # Turquoise
+            return tuple(125, 249, 225) # Turquoise
         elif self.owning_team==TEAM.ARENA: # If it is a Sheep (game object owned by ARENA)
-            return tuple(reversed((255,255,255))) # White
+            return tuple(55,255,255) # White
         elif self.owning_team: # If it is a Gem (game object owned by a team.)
-            return tuple(reversed(self.team_marker_colors[self.owning_team])) # Picks the team colour from above
+            return tuple(self.team_marker_colors[self.owning_team]) # Picks the team colour from above
         else: # No owning team?
-            return tuple(reversed((255,125,125))) # Pinky
+            return tuple(255,125,125) # Pinky
 
 
 class ARENA_MARKER(BASE_MARKER): # Not much going on here. This represents a wall.
