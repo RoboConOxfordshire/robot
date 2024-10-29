@@ -22,6 +22,8 @@ from robot.cytron import CytronBoard
 from robot.greengiant import GreenGiantInternal, GreenGiantGPIOPinList, GreenGiantMotors, _GG_SERVO_PWM_BASE, _GG_GPIO_PWM_BASE, _GG_GPIO_GPIO_BASE, _GG_SERVO_GPIO_BASE, PWM_SERVO, OUTPUT, TIMER
 
 from robot.game_config import TEAM
+from robot.game_config import MARKER_TYPE
+
 from . import game_config
 from robot.game_config import POEM_ON_STARTUP
 

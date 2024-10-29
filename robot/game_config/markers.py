@@ -16,7 +16,7 @@ Byee!
 Hello
 I've updated this for 2025 and renamed the movable boxes to BOXs. This is just an internal name and
 mostly shouldn't be visible to the users. In 2025 they are dealing with Sheep, Gems and Lair markers.
-- Mr Lomax (2024-2025)
+- OTL (2024-2025)
 """
 
 class MARKER_TYPE(enum.Enum): # Keep something like this to determine if a marker is a wall or not.
@@ -52,13 +52,13 @@ class BASE_MARKER: # Base marker class that BOX_MARKER and ARENA_MARKER derive f
     @property
     def bounding_box_color(self) -> tuple:
         if self.type == MARKER_TYPE.ARENA: # If it is a wall
-            return tuple(125, 249, 225) # Turquoise
+            return tuple((125, 249, 225)) # Turquoise
         elif self.owning_team==TEAM.ARENA: # If it is a Sheep (game object owned by ARENA)
-            return tuple(55,255,255) # White
+            return tuple((55,255,255)) # White
         elif self.owning_team: # If it is a Gem (game object owned by a team.)
             return tuple(self.team_marker_colors[self.owning_team]) # Picks the team colour from above
         else: # No owning team?
-            return tuple(255,125,125) # Pinky
+            return tuple((255,125,125)) # Pinky
 
 
 class ARENA_MARKER(BASE_MARKER): # Not much going on here. This represents a wall.
@@ -79,7 +79,7 @@ class BOX_MARKER(BASE_MARKER): # This is a game object rather than a wall. Add p
     def __repr__(self) -> str:
         return f"<Marker(BOX) owning_team={self.owning_team} />"
 
-class LAIR_MARKER(ARENA_MARKER): # This is marks a teams lair so is a wall but also has an owning team.
+class LAIR_MARKER(BASE_MARKER): # This is marks a teams lair so is a wall but also has an owning team.
     def __init__(
         self, id: int, owner: TEAM
     ) -> None:
@@ -100,11 +100,11 @@ class MARKER(BASE_MARKER): # This is literally just how the code gets the differ
         such as:
         https://chaitanyantr.github.io/apriltag (remember to set to tag36h11 for this one)
 
-        In 2025 low marker IDs (0-39) are Sheep and Gems.
+        In 2025 low marker IDs (0-49) are Sheep and Gems.
 
-        Markers 24-31 are Gems, with a pair of markers for each team.
+        Markers 20-23 and 40-43 are Gems, with a pair of markers for each team.
 
-        Markers The rest of the low markers are unowned - their owning_team property is ARENA.
+        The rest of the low markers are unowned sheep - their owning_team property is ARENA.
 
         It is probably recommendable that you have duplicate marker IDs, so that any damaged
         marker can be replaced by one with equivalent game meaning - in 2024 we made ID 0 and 
@@ -123,7 +123,8 @@ class MARKER(BASE_MARKER): # This is literally just how the code gets the differ
             return ARENA_MARKER(id)
         
         elif id >=50:
-            return LAIR_MARKER(id, id%50)
+            owning_team = TEAM[f"T{id%50}"] # Set to the corresponding TEAM enum.
+            return LAIR_MARKER(id, owning_team)
 
 
         wrappingId = id % 20 # Make sure that the ID range wraps after 20 values.
@@ -133,3 +134,5 @@ class MARKER(BASE_MARKER): # This is literally just how the code gets the differ
             owning_team = TEAM["ARENA"]
 
         return BOX_MARKER(id, owning_team)
+
+
