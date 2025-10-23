@@ -22,16 +22,16 @@ mostly shouldn't be visible to the users. In 2025 they are dealing with Sheep, G
 class MARKER_TYPE(enum.Enum): # Keep something like this to determine if a marker is a wall or not.
     BOX = enum.auto()    # This is a movable box. In 2025 this is a Sheep or a Gem
     ARENA = enum.auto()     # These are the wall markers
-    LAIR = enum.auto()      # In 2025 each team has a lair with a small marker on the wall
+    # LAIR = enum.auto()      # In 2025 each team has a lair with a small marker on the wall
 
 
 
 class BASE_MARKER: # Base marker class that BOX_MARKER and ARENA_MARKER derive from.
     team_marker_colors: dict = { # Colour definitions for each team defined in TEAMS
-        TEAM.RUBY: (255, 64, 0), # RED
-        TEAM.DIAMOND: (255, 255, 32), # YELLOW
-        TEAM.JADE: (50,255,0), # GREEN
-        TEAM.TOPAZ: (0, 100, 255), # BLUE
+        TEAM.RED: (255, 64, 0), # RED
+        TEAM.YELLOW: (255, 255, 32), # YELLOW
+        TEAM.GREEN: (50,255,0), # GREEN
+        TEAM.BLUE: (0, 100, 255), # BLUE
     }
 
     def __init__(
@@ -52,21 +52,21 @@ class BASE_MARKER: # Base marker class that BOX_MARKER and ARENA_MARKER derive f
     @property
     def bounding_box_color(self) -> tuple:
         if self.type == MARKER_TYPE.ARENA: # If it is a wall
-            return tuple((125, 249, 225)) # Turquoise
-        elif self.owning_team==TEAM.ARENA: # If it is a Sheep (game object owned by ARENA)
-            return tuple((55,255,255)) # White
-        elif self.owning_team: # If it is a Gem (game object owned by a team.)
+            # return tuple((125, 249, 225)) # Turquoise
             return tuple(self.team_marker_colors[self.owning_team]) # Picks the team colour from above
+        elif self.owning_team==TEAM.ARENA: # If it is a supply crate or drop
+            return tuple((55,255,255)) # White
         else: # No owning team?
             return tuple((255,125,125)) # Pinky
 
 
 class ARENA_MARKER(BASE_MARKER): # Not much going on here. This represents a wall.
-    def __init__(self, id: int) -> None:
+    def __init__(self, id: int, owner: TEAM) -> None:
         super().__init__(id, MARKER_TYPE.ARENA)
+        self.owning_team = owner
 
     def __repr__(self) -> str:
-        return f"<Marker(ARENA)/>"
+        return f"<Marker(ARENA) owning_team={self.owning_team} />"
 
 
 class BOX_MARKER(BASE_MARKER): # This is a game object rather than a wall. Add properties you want to keep track of
@@ -77,17 +77,18 @@ class BOX_MARKER(BASE_MARKER): # This is a game object rather than a wall. Add p
         self.owning_team = owner
 
     def __repr__(self) -> str:
-        return f"<Marker(BOX) owning_team={self.owning_team} />"
+        return f"<Marker(BOX)/>"
+        # return f"<Marker(BOX) owning_team={self.owning_team} />"
 
-class LAIR_MARKER(BASE_MARKER): # This is marks a teams lair so is a wall but also has an owning team.
-    def __init__(
-        self, id: int, owner: TEAM
-    ) -> None:
-        super().__init__(id, MARKER_TYPE.LAIR)
-        self.owning_team = owner
+# class LAIR_MARKER(BASE_MARKER): # This is marks a teams lair so is a wall but also has an owning team.
+#     def __init__(
+#         self, id: int, owner: TEAM
+#     ) -> None:
+#         super().__init__(id, MARKER_TYPE.LAIR)
+#         self.owning_team = owner
 
-    def __repr__(self) -> str:
-        return f"<Marker(LAIR) owning_team={self.owning_team} />"
+#     def __repr__(self) -> str:
+#         return f"<Marker(LAIR) owning_team={self.owning_team} />"
 
 class MARKER(BASE_MARKER): # This is literally just how the code gets the different marker types.
     @staticmethod
@@ -118,19 +119,23 @@ class MARKER(BASE_MARKER): # This is literally just how the code gets the differ
         In 2025 there are also Lair markers, one of each of the team's lairs. These are numbered 50-53.
         """
 
-        ARENA_WALL_LOWER_ID = 60
+        # Calculate team area from Arean marker ID
+        # (((ID - 100) + 3) % 23) // 6
+
+        ARENA_WALL_LOWER_ID = 100
         if id >= ARENA_WALL_LOWER_ID:
-            return ARENA_MARKER(id)
+            owner_index = (((id - 100) + 3) % 23) // 6
+            return ARENA_MARKER(id, TEAM[f"T{owner_index%4}"])
         
-        elif id >=50:
-            owning_team = TEAM[f"T{id%50}"] # Set to the corresponding TEAM enum.
-            return LAIR_MARKER(id, owning_team)
+        # elif id >=50:
+        #     owning_team = TEAM[f"T{id%50}"] # Set to the corresponding TEAM enum.
+        #     return LAIR_MARKER(id, owning_team)
 
 
-        wrappingId = id % 20 # Make sure that the ID range wraps after 20 values.
-        if wrappingId<4 and id >= 20: # If it is a Gem (has a team)
-            owning_team = TEAM[f"T{wrappingId}"] # Set to the corresponding TEAM enum.
-        else: # If it is a Sheep (Has no team)
+        wrappingId = id % 48 # Make sure that the ID range wraps after 20 values.
+        if wrappingId <= 23: # If it is a Supply Crate
+            owning_team = TEAM["ARENA"] # Set to the corresponding TEAM enum.
+        else: # It is a Supply Drop
             owning_team = TEAM["ARENA"]
 
         return BOX_MARKER(id, owning_team)
