@@ -207,8 +207,22 @@ class RoboConPiCamera(Camera):
         self.latest_capture = Capture()
         self.lock = threading.Lock()
         self.queue = []
-        os.environ["LIBCAMERA_LOG_LEVELS"] = "3"
+
+        os.environ["LIBCAMERA_LOG_LEVELS"] = "4"
         picamera2.Picamera2.set_logging(picamera2.Picamera2.ERROR)
+
+        self._thread = None
+        self._thread_stopping = True
+        
+        self._initialise_camera(start_res, focal_lengths)
+
+        self.stream_thread = threading.Thread(target=functools.partial(prepare_for_stream, self.queue))
+        self.stream_thread.start()
+
+        self.watchdog_thread = threading.Thread(target=self._watchdog, daemon=True)
+        self.watchdog_thread.start()
+
+    def _initialise_camera(self, start_res, focal_lengths):
         self._pi_camera = picamera2.Picamera2()
         # should test if the camera exists here, and give a nice warning
         self.camera_model = self._pi_camera.camera_properties['Model']
@@ -240,24 +254,38 @@ class RoboConPiCamera(Camera):
         else:
            print ("unknown camera: " + self._pi_camera.camera_properties)
         
-        self._thread = None
-        self._thread_stopping = True
-
         self._pi_camera.set_logging(picamera2.Picamera2.ERROR)
         self._resultant_resolution = None
         self.res = start_res
         self._pi_camera.start()
         self._update_camera_params(self.focal_lengths)
 
-        self.stream_thread = threading.Thread(target=functools.partial(prepare_for_stream, self.queue))
-        self.stream_thread.start()
-
     def _start_thread(self):
         if self._thread_stopping:
+            self.latest_capture.timestamp = time.perf_counter()
             self._thread_stopping = False
             self._thread = threading.Thread(target=functools.partial(pi_cam_capture, self, self.latest_capture,
                                                                     self.lock, self.queue))
-            self._thread.start() 
+            self._thread.start()
+
+    def _watchdog(self):
+        while True:
+            if not self._thread_stopping:
+                if self.latest_capture.timestamp < time.perf_counter() - 1:
+                    print("Camera system timeout. This may be due to excessive vibration, if message appears frequently please contact RoboCon. Attempting to restart camera automatically.")
+                    self._thread_stopping = True  # As the thread just hangs can't reconnect
+
+                    done = False
+                    while not done:
+                        try:
+                            self._pi_camera.close()
+                            self._initialise_camera(self.res, self.focal_lengths)  # Reinit with the same initial settings
+                            done = True
+                        except Exception as e:
+                            print("Reinitialisation failed, waiting a second then trying again.")
+                            time.sleep(1)
+                    self._start_thread()
+                    time.sleep(2)
 
     def _stop_thread(self):
         if self._thread:
