@@ -17,12 +17,18 @@ Hello
 I've updated this for 2025 and renamed the movable boxes to BOXs. This is just an internal name and
 mostly shouldn't be visible to the users. In 2025 they are dealing with Sheep, Gems and Lair markers.
 - OTL (2024-2025)
+
+Hello again,
+This year I've given the Arena walls an owner to indicate the team in that corner. The boxes are of 
+two types, Supply Create and Supply Drop. These do NOT have owners. They are both the BOX_MARKER class
+but with different marker_type.
 """
 
 class MARKER_TYPE(enum.Enum): # Keep something like this to determine if a marker is a wall or not.
     BOX = enum.auto()    # This is a movable box. In 2025 this is a Sheep or a Gem
     ARENA = enum.auto()     # These are the wall markers
-    # LAIR = enum.auto()      # In 2025 each team has a lair with a small marker on the wall
+    CRATE = enum.auto()
+    DROP = enum.auto()
 
 
 
@@ -54,10 +60,15 @@ class BASE_MARKER: # Base marker class that BOX_MARKER and ARENA_MARKER derive f
         if self.type == MARKER_TYPE.ARENA: # If it is a wall
             # return tuple((125, 249, 225)) # Turquoise
             return tuple(self.team_marker_colors[self.owning_team]) # Picks the team colour from above
-        elif self.owning_team==TEAM.ARENA: # If it is a supply crate or drop
+        # elif self.owning_team==TEAM.ARENA: # If it is a supply crate or drop
+        elif self.type == MARKER_TYPE.CRATE:
+            return tuple((215,128,0)) # Orange
+        elif self.type == MARKER_TYPE.DROP:
+            return tuple((215, 0, 255))  # Purple
+        else: 
             return tuple((55,255,255)) # White
-        else: # No owning team?
-            return tuple((255,125,125)) # Pinky
+        # else: # No owning team?
+            # return tuple((255,125,125)) # Pinky
 
 
 class ARENA_MARKER(BASE_MARKER): # Not much going on here. This represents a wall.
@@ -71,24 +82,11 @@ class ARENA_MARKER(BASE_MARKER): # Not much going on here. This represents a wal
 
 class BOX_MARKER(BASE_MARKER): # This is a game object rather than a wall. Add properties you want to keep track of
     def __init__(
-        self, id: int, owner: TEAM
+        self, id: int, owner: TEAM, marker_type: MARKER_TYPE = MARKER_TYPE.BOX
     ) -> None:
-        super().__init__(id, MARKER_TYPE.BOX)
+        super().__init__(id, marker_type)
         self.owning_team = owner
 
-    def __repr__(self) -> str:
-        return f"<Marker(BOX)/>"
-        # return f"<Marker(BOX) owning_team={self.owning_team} />"
-
-# class LAIR_MARKER(BASE_MARKER): # This is marks a teams lair so is a wall but also has an owning team.
-#     def __init__(
-#         self, id: int, owner: TEAM
-#     ) -> None:
-#         super().__init__(id, MARKER_TYPE.LAIR)
-#         self.owning_team = owner
-
-#     def __repr__(self) -> str:
-#         return f"<Marker(LAIR) owning_team={self.owning_team} />"
 
 class MARKER(BASE_MARKER): # This is literally just how the code gets the different marker types.
     @staticmethod
@@ -127,17 +125,16 @@ class MARKER(BASE_MARKER): # This is literally just how the code gets the differ
             owner_index = (((id - 100) + 3) % 23) // 6
             return ARENA_MARKER(id, TEAM[f"T{owner_index%4}"])
         
-        # elif id >=50:
-        #     owning_team = TEAM[f"T{id%50}"] # Set to the corresponding TEAM enum.
-        #     return LAIR_MARKER(id, owning_team)
-
-
+ 
         wrappingId = id % 48 # Make sure that the ID range wraps after 20 values.
+        marker_type: MARKER_TYPE = MARKER_TYPE.BOX
         if wrappingId <= 23: # If it is a Supply Crate
             owning_team = TEAM["ARENA"] # Set to the corresponding TEAM enum.
+            marker_type = MARKER_TYPE.CRATE
         else: # It is a Supply Drop
             owning_team = TEAM["ARENA"]
+            marker_type = MARKER_TYPE.DROP
 
-        return BOX_MARKER(id, owning_team)
+        return BOX_MARKER(id, owning_team, marker_type)
 
 
