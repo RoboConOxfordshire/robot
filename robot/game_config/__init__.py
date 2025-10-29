@@ -4,7 +4,6 @@ from .markers import (
     MARKER_TYPE,
     ARENA_MARKER,
     BOX_MARKER,
-    LAIR_MARKER,
     BASE_MARKER,
 )
 from .startup_poems import POEM_ON_STARTUP
@@ -21,7 +20,6 @@ __all__ = (
     "TEAM",
     "MARKER",
     "BOX_MARKER",
-    "LAIR_MARKER"
     "MARKER_TYPE",
     "BASE_MARKER",
     "ARENA_MARKER",
