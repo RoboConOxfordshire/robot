@@ -247,8 +247,13 @@ class Robot():
         if self._version < 10:
             return self._green_giant.enable_motors(on)
 
+    @property
     def enable_12v(self):
         return self._green_giant.get_12v_acc_power()
+
+    @enable_12v.setter
+    def enable_12v(self, on):
+        self._green_giant.set_12v_acc_power(on)
 
     @property
     def enable_5v(self):
