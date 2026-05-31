@@ -252,7 +252,7 @@ class RoboConPiCamera(Camera):
             elif start_res not in self.focal_lengths:
                 raise "Invalid resolution for camera."
         else:
-           print ("unknown camera: " + self._pi_camera.camera_properties)
+           print("unknown camera:", self._pi_camera.camera_properties)
         
         self._pi_camera.set_logging(picamera2.Picamera2.ERROR)
         self._resultant_resolution = None

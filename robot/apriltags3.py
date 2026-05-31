@@ -1,17 +1,13 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 """Python wrapper for C version of apriltags. This program creates two
 classes that are used to detect apriltags and extract information from
 them. Using this module, you can identify all apriltags visible in an
 image, and get information about the location and orientation of the
 tags.
 
-This module is both python 2 and 3 compatiable.
-
 Forked from: <https://github.com/duckietown/apriltags3-py>
 Added support for polar cords and variable sized markers
 """
-from __future__ import division
-from __future__ import print_function
 
 import ctypes
 import os

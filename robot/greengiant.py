@@ -183,7 +183,7 @@ class GreenGiantInternal():
     def __init__(self, bus):
         self._bus = bus
         self._version = self.get_version()
-        print ("Version: ", self._version)
+        print("Version:", self._version)
         self.enabled_12v = False
         self.set_motor_power(self.enabled_12v)
 
