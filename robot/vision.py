@@ -310,8 +310,8 @@ class RoboConPiCamera(Camera):
                 cam_res = PI_2_1_CAMERA_RES_MAP[new_res]
                 self._pi_camera.resolution = cam_res
             else:
-                self._pi_camera.create_still_configuration(main={"size": new_res})
-                self._pi_camera.configure(self._camera_config)
+                cfg = self._pi_camera.create_still_configuration(main={"size": new_res})
+                self._pi_camera.configure(cfg)
             self._resultant_resolution = new_res
             self._update_camera_params(self.focal_lengths)
             if thread_running:

@@ -26,46 +26,47 @@ def get_reading():
 def get_reading_number(error):
     result = int(K_READING_COUNTS / error)
     result = abs(result)
-    if result is 0:
+    if result == 0:
         result = 1
     elif result > 6:
         result = 6
     return result
 
 
-R = robot.Robot()
-result = {}
+if __name__ == "__main__":
+    R = robot.Robot()
+    result = {}
 
-for res in [(640, 480), (1280, 720), (1640, 1232), (1920, 1080)]:
-    print("Checking res {}".format(res))
-    R.camera.res = res
-    pprint.pprint(R.camera.focal_lengths)
+    for res in [(640, 480), (1280, 720), (1640, 1232), (1920, 1080)]:
+        print("Checking res {}".format(res))
+        R.camera.res = res
+        pprint.pprint(R.camera.focal_lengths)
 
-    error = THRESHOLD + 1.0
-    previous_error = error
-    while abs(error) > THRESHOLD:
-        value = R.camera.focal_lengths[res][0]
-        p = error * KP
-        d = (previous_error - error) * KD
-        value += p + d
-
-        R.camera.focal_lengths[res] = (value, value)
-        R.camera._update_camera_params(R.camera.focal_lengths)
-
-        reading_counts = get_reading_number(error)
-
-        dists = [get_reading() for _ in range(reading_counts)]
-        average_dist = (sum(dists))/reading_counts
-
+        error = THRESHOLD + 1.0
         previous_error = error
-        error = TARGET - average_dist
+        while abs(error) > THRESHOLD:
+            value = R.camera.focal_lengths[res][0]
+            p = error * KP
+            d = (previous_error - error) * KD
+            value += p + d
 
-        print("Tried: {} got dist {} error: {}".format(
-            value, average_dist, error))
-        print("    Max: {} min: {} range: {}".format(
-            max(dists), min(dists), max(dists) - min(dists)))
-        print("    P = {} reading_counts {}".format(error * KP, reading_counts))
+            R.camera.focal_lengths[res] = (value, value)
+            R.camera._update_camera_params(R.camera.focal_lengths)
 
-    result[res] = (value, value)
+            reading_counts = get_reading_number(error)
 
-pprint.pprint(result)
+            dists = [get_reading() for _ in range(reading_counts)]
+            average_dist = (sum(dists))/reading_counts
+
+            previous_error = error
+            error = TARGET - average_dist
+
+            print("Tried: {} got dist {} error: {}".format(
+                value, average_dist, error))
+            print("    Max: {} min: {} range: {}".format(
+                max(dists), min(dists), max(dists) - min(dists)))
+            print("    P = {} reading_counts {}".format(error * KP, reading_counts))
+
+        result[res] = (value, value)
+
+    pprint.pprint(result)

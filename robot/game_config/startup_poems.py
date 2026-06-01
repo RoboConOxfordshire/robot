@@ -62,7 +62,7 @@ class POEM_ON_STARTUP:
         as an argument because I don't have the energy to try importing it,
         I just spent quite a while struggling with the new brains.
         """
-        jokeNo = randint(0,len(POEM_ON_STARTUP.jokes))
+        jokeNo = randint(0, len(POEM_ON_STARTUP.jokes) - 1)
         jokeToPrint = "I don't know what went wrong, but we messed up our joke loading ;-;"
         try:
             jokeToPrint = POEM_ON_STARTUP.jokes[jokeNo]
