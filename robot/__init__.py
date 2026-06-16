@@ -3,9 +3,9 @@
 April tags a marker recognition system. Also performs convince functions for use
 by shepherd"""
 
-import importlib
+import importlib.util
 
-has_picamera = importlib.find_loader("picamera") is not None
+has_picamera = importlib.util.find_spec("picamera") is not None
 
 if not has_picamera:
     import sys
@@ -35,10 +35,10 @@ from robot.game_config import (
 )
 
 
-MINIUM_VERSION = (3, 6)
-if sys.version_info <= MINIUM_VERSION:
+MINIMUM_VERSION = (3, 6)
+if sys.version_info <= MINIMUM_VERSION:
     raise ImportError(
-        "Expected python {} but instead got {}".format(MINIUM_VERSION, sys.version_info)
+        "Expected python {} but instead got {}".format(MINIMUM_VERSION, sys.version_info)
     )
     
 __all__ = [

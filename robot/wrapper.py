@@ -201,17 +201,7 @@ class Robot():
 
     @property
     def enable_motors(self):
-        """Return if motors are currently enabled
-
-        For the GG board this will be the state of the 12v line, which we cannot query,
-        so return what it was set to.
-
-        For the PiLow series the Motors have both a power control and a enable. Generally
-        the Power should not be switched on and off, just the enable bits. The power may
-        be tripped in extreme circumstances. I guess that here we want to report any
-        reason for  the motors not working, which includes power and enable
-
-        """
+        """Return if motors are currently enabled"""
         if self._gg_version < 10:
             return self._green_giant.enable_12v
         else:
@@ -219,33 +209,9 @@ class Robot():
 
     @enable_motors.setter
     def enable_motors(self, on):
-        """An nice alias for set_12v"""
-        if self._version < 10:
-            return self._green_giant.enable_motors(on)
-
-    @property
-    def enable_motors(self):
-        """Return if motors are currently enabled
-
-        For the GG board this will be the state of the 12v line, which we cannot query,
-        so return what it was set to.
-
-        For the PiLow series the Motors have both a power control and a enable. Generally
-        the Power should not be switched on and off, just the enable bits. The power may
-        be tripped in extreame circumstances. I guess that here we want to report any 
-        reason for  the motors not working, which includes power and enable
-
-        """
+        """Enable or disable motors"""
         if self._gg_version < 10:
-            return self._green_giant.enable_12v
-        else:
-            return self._green_giant.get_motorpwr() and self._green_giant.get_enable()
-
-    @enable_motors.setter
-    def enable_motors(self, on):
-        """An nice alias for set_12v"""
-        if self._version < 10:
-            return self._green_giant.enable_motors(on)
+            self._green_giant.enable_motors(on)
 
     @property
     def enable_12v(self):

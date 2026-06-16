@@ -43,39 +43,11 @@ _GG_GPIO_MASKS = {
 
 
 
-#__GG_MOTOR_ERROR_STATE_MASK = {
-#    "GG_Motor_A_Open_Load":     1 << 0        # not always an error, may be weedy motors
-#    "GG_Motor_A_Short":         1 << 1            # dead short or motor too power hungry for driver
-#    "GG_Motor_A_Overheat":      1 << 2         # In excess of 165 Degrees at Junction - beware of the hot case
-#    "GG_Motor_A_Short_To_Rail": 1 << 3   # connection detected between GND and motor or 12v and motor
-#    "GG_Motor_B_Open_Load":     1 << 4
-#    "GG_Motor_B_Short":         1 << 5
-#    "GG_Motor_B_Overheat":      1 << 6
-#    "GG_Motor_B_Short_To_Rail": 1 << 7
-#}
-
-#__GG_SYSTEM_ERROR_STATE_MASK = {
-#
-#    GG_System_5v_Fault: 1 << 0          # Short on GPIO or Servo overload
-#    GG_System_MotorPower_Fault: 1 << 1  # Probably should not happen, but may with two high power motors
-#    GG_System_12v_Fault: 1 << 2         # Short or overload on 12v Acc port
-#    # avr overheat ?
-#    # low power lockout ?
-#}
-
-
 
 _GG_I2C_ADDR = 0x08
 
 _GG_SERVO_PWM_BASE = 1
 _GG_GPIO_PWM_BASE = 48
-
-# PWM (external ports numbered from zero on PiLow)
-#        H  L
-# PWM 1: 0, 1
-# PWM 2: 2, 3
-# PWM 3: 4, 5
-# PWM 4: 6, 7
 
 _GG_GG_PWM_CENTER = 374
 _GG_GG_PWM_PERCENT_HALF_RANGE = 125
@@ -183,7 +155,7 @@ class GreenGiantInternal():
     def __init__(self, bus):
         self._bus = bus
         self._version = self.get_version()
-        print ("Version: ", self._version)
+        print("Version:", self._version)
         self.enabled_12v = False
         self.set_motor_power(self.enabled_12v)
 
@@ -385,18 +357,7 @@ class GreenGiantGPIOPin():
         else:
             raise IOError(f"Attempt set PWM value on GPIO only pin")
 
-    #def __bool__(self):
-    #    """Return a bool if in a digital mode or a float if in an analogue"""
-    #    if self._gpio_base is not None:
-    #        if self._mode in self._digital_read_modes:
-    #            return self.digital
-    #
-    #        raise ValueError(f"Tried to evaluate GPIO {self._index} as a True/False "
-    #                         f"but current mode:{self._mode} is not in {self._digital_read_modes}")
-    #    else:
-    #        raise IOError(f"Attempt use value of a PWM only pin")
-
-    def __setitem__(self, value):
+    def set_value(self, value):
         if self._mode is PWM_SERVO:
             self.pwm = value
         elif self._mode is OUTPUT:
@@ -404,7 +365,7 @@ class GreenGiantGPIOPin():
         else:
             raise IOError(f"Attempt to write to a pin configured for input")
 
-    def __getitem__(self):
+    def get_value(self):
         if self._mode is PWM_SERVO:
             return self.pwm
         elif self._mode is TIMER:
@@ -471,55 +432,7 @@ class GreenGiantGPIOPinList():
     def off(self):
         for pin in self._list:
             pin.mode = INPUT
-"""
-class GreenGiantPWM():
-    ""An object implementing a descriptor protocol to control the servos for Green Giant only
-    PWM is combined into GPIO for the PiLow
-    ""
 
-    def __init__(self, bus, version):
-        self._bus = bus
-        self._version = version
-    def __getitem__(self, index):
-        if self._version < 10:
-            index = _decrement_pin_index(index)
-
-        command = _GG_PWM_START + (index * 2)
-        # TODO - Use a function for this?
-        high = self._bus.read_byte_data(_GG_I2C_ADDR, command)
-        low = self._bus.read_byte_data(_GG_I2C_ADDR, command + 1)
-        value = low + (high << 8)
-
-        if self._version < 10:
-            return (value - _GG_GG_PWM_CENTER) * 100 / _GG_GG_PWM_PERCENT_HALF_RANGE
-        else:
-            return (value - _GG_PiLow_PWM_CENTER) * 100 / _GG_PiLow_PWM_PERCENT_HALF_RANGE
-
-    def __setitem__(self, index, percent):
-        if self._version < 10:
-            index = _decrement_pin_index(index)
-        command = _GG_PWM_START + (index * 2)
-        if self._version < 10:
-            value = _GG_GG_PWM_CENTER + (percent / 100 * _GG_GG_PWM_PERCENT_HALF_RANGE)
-            value = clamp(value, _GG_GG_PWM_MIN, _GG_GG_PWM_MAX)
-        else:
-            value = _GG_PiLow_PWM_CENTER + (percent / 100 * _GG_PiLow_PWM_PERCENT_HALF_RANGE)
-            value = clamp(value, _GG_PiLow_PWM_MIN, _GG_PiLow_PWM_MAX)
-        value = int(value)
-
-        low = value & 0xFF
-        high = value >> 8
-
-        self._bus.write_byte_data(_GG_I2C_ADDR, command, high)
-        self._bus.write_byte_data(_GG_I2C_ADDR, command + 1, low)
-
-    def off(self):
-        for i in range(4):
-            if self._version < 10:
-                self.__setitem__(i + 1, 0)
-            else:
-                self.__setitem__(i, 0)
-"""
 _SYSTEM_VOLTAGE = 12
 _MAX_MOTOR_PWM_VALUE = 0xff
 
@@ -552,7 +465,7 @@ class GreenGiantMotors():
         if index not in (0,1):
             raise IndexError(
                 f"motor index must be in (0,1) but instead got {index}")
-        hex_mag = self._bus.read_byte_data(_GG_I2C_ADDR, _GG_MOTOR_A_MAG + index)
+        hex_mag = self._bus.read_byte_data(_GG_I2C_ADDR, _GG_MOTOR_MAG_START + index)
 
         return hex_mag * (100.0 / 256.0) * self.power_scaling_factor
 
