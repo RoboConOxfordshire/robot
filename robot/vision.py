@@ -153,7 +153,11 @@ class Camera(abc.ABC):
 
     @abc.abstractmethod
     def capture(self) -> Capture:
-        """Get a frame from the camera"""
+        """Get a frame from the camera, undefined behaviour if called before start()"""
+
+    @abc.abstractmethod
+    def start(self) -> None:
+        """Start the camera, should always be called before capture()"""
 
     @abc.abstractmethod
     def close(self) -> None:
@@ -259,6 +263,9 @@ class RoboConPiCamera(Camera):
         self.res = start_res
         self._pi_camera.start()
         self._update_camera_params(self.focal_lengths)
+
+    def start(self):
+        self._start_thread()
 
     def _start_thread(self):
         if self._thread_stopping:
@@ -422,6 +429,9 @@ class RoboConUSBCamera(Camera):
 
             self._res = new_res
             self._update_camera_params(self.focal_lengths)
+
+    def start(self):
+        pass
 
     def capture(self):
         """Capture from a USB camera. Not all usb cameras support native YUV
