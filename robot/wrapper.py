@@ -338,7 +338,7 @@ class Robot():
         start_info = self._get_start_info()
 
         _logger.info("Robot started!\n")
-        self.camera._start_thread()
+        self.camera.start()
 
         return start_info
 
