@@ -5,9 +5,9 @@ from .teams import TEAM
 
 """
 Hiiii!
-This file contains the definitions for the markers and the data we assign to them. 
-I have just set them to 2024's competition values, with MARKER_TYPE deciding whether a marker is part of 
-the ARENA walls, or a game object, which is this year (2023-2024) called a POTATO. So make the changes you 
+This file contains the definitions for the markers and the data we assign to them.
+I have just set them to 2024's competition values, with MARKER_TYPE deciding whether a marker is part of
+the ARENA walls, or a game object, which is this year (2023-2024) called a POTATO. So make the changes you
 need! But make sure to change every reference to it in the code, not just the ones in this file.
 So go nuts! Good luck with your Robocon, and feel free to add your own messages for the future below!
 Byee!
@@ -19,7 +19,7 @@ mostly shouldn't be visible to the users. In 2025 they are dealing with Sheep, G
 - OTL (2024-2025)
 
 Hello again,
-This year I've given the Arena walls an owner to indicate the team in that corner. The boxes are of 
+This year I've given the Arena walls an owner to indicate the team in that corner. The boxes are of
 two types, Supply Create and Supply Drop. These do NOT have owners. They are both the BOX_MARKER class
 but with different marker_type.
 """
@@ -29,6 +29,8 @@ class MARKER_TYPE(enum.Enum): # Keep something like this to determine if a marke
     ARENA = enum.auto()     # These are the wall markers
     CRATE = enum.auto()
     DROP = enum.auto()
+    QUAFFLE = enum.auto()
+    SNITCH = enum.auto()
 
 
 
@@ -57,15 +59,12 @@ class BASE_MARKER: # Base marker class that BOX_MARKER and ARENA_MARKER derive f
 
     @property
     def bounding_box_color(self) -> tuple:
-        if self.type == MARKER_TYPE.ARENA: # If it is a wall
-            # return tuple((125, 249, 225)) # Turquoise
+        if self.type == MARKER_TYPE.ARENA or self.type == MARKER_TYPE.QUAFFLE: # If it is a wall
             return tuple(self.team_marker_colors[self.owning_team]) # Picks the team colour from above
-        # elif self.owning_team==TEAM.ARENA: # If it is a supply crate or drop
-        elif self.type == MARKER_TYPE.CRATE:
+
+        elif self.type == MARKER_TYPE.SNITCH:
             return tuple((215,128,0)) # Orange
-        elif self.type == MARKER_TYPE.DROP:
-            return tuple((215, 0, 255))  # Purple
-        else: 
+        else:
             return tuple((55,255,255)) # White
         # else: # No owning team?
             # return tuple((255,125,125)) # Pinky
@@ -94,8 +93,8 @@ class MARKER(BASE_MARKER): # This is literally just how the code gets the differ
         """
         Get a marker object from an id
 
-        Marker IDs are greater than 0, and usually won't go higher than 200. They are 
-        read as April tags, so use an online 6x6 April tag generator to test values, 
+        Marker IDs are greater than 0, and usually won't go higher than 200. They are
+        read as April tags, so use an online 6x6 April tag generator to test values,
         such as:
         https://chaitanyantr.github.io/apriltag (remember to set to tag36h11 for this one)
 
@@ -106,7 +105,7 @@ class MARKER(BASE_MARKER): # This is literally just how the code gets the differ
         The rest of the low markers are unowned sheep - their owning_team property is ARENA.
 
         It is probably recommendable that you have duplicate marker IDs, so that any damaged
-        marker can be replaced by one with equivalent game meaning - in 2024 we made ID 0 and 
+        marker can be replaced by one with equivalent game meaning - in 2024 we made ID 0 and
         ID 20 equivalent.
 
         Higher marker IDs (40+) will be part of the arena. These markers will be
@@ -124,17 +123,15 @@ class MARKER(BASE_MARKER): # This is literally just how the code gets the differ
         if id >= ARENA_WALL_LOWER_ID:
             owner_index = (((id - 100) + 3) % 23) // 6
             return ARENA_MARKER(id, TEAM[f"T{owner_index%4}"])
-        
- 
-        wrappingId = id % 48 # Make sure that the ID range wraps after 20 values.
+
+
+        # wrappingId = id // 16 # Make sure that the ID range wraps after 20 values.
         marker_type: MARKER_TYPE = MARKER_TYPE.BOX
-        if wrappingId <= 23: # If it is a Supply Crate
-            owning_team = TEAM["ARENA"] # Set to the corresponding TEAM enum.
-            marker_type = MARKER_TYPE.CRATE
+        if id < 16: # If it is a Quaffle
+            owning_team = TEAM[f"T{id//4}"] # Set to the corresponding TEAM enum.
+            marker_type = MARKER_TYPE.QUAFFLE
         else: # It is a Supply Drop
             owning_team = TEAM["ARENA"]
-            marker_type = MARKER_TYPE.DROP
+            marker_type = MARKER_TYPE.SNITCH
 
         return BOX_MARKER(id, owning_team, marker_type)
-
-
