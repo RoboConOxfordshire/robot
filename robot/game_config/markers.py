@@ -4,41 +4,39 @@ import typing
 from .teams import TEAM
 
 """
-Hiiii!
-This file contains the definitions for the markers and the data we assign to them. 
-I have just set them to 2024's competition values, with MARKER_TYPE deciding whether a marker is part of 
-the ARENA walls, or a game object, which is this year (2023-2024) called a POTATO. So make the changes you 
-need! But make sure to change every reference to it in the code, not just the ones in this file.
-So go nuts! Good luck with your Robocon, and feel free to add your own messages for the future below!
-Byee!
- - Holly (2023-2024)
+Marker definitions for RoboCon Oxfordshire 2027 - Quidditch.
 
-Hello
-I've updated this for 2025 and renamed the movable boxes to BOXs. This is just an internal name and
-mostly shouldn't be visible to the users. In 2025 they are dealing with Sheep, Gems and Lair markers.
-- OTL (2024-2025)
+The game objects are Quaffles (the coloured boxes) and the Snitch.
+Quaffles are identified by AprilTags 0 to 3, one per team colour:
+    0 = Red, 1 = Yellow, 2 = Green, 3 = Blue.
+The Snitch is AprilTag 4 (Gold).
 
-Hello again,
-This year I've given the Arena walls an owner to indicate the team in that corner. The boxes are of 
-two types, Supply Create and Supply Drop. These do NOT have owners. They are both the BOX_MARKER class
-but with different marker_type.
+Arena wall markers start at ID 100. Each side of the arena belongs to a
+team corner:
+    100 - 102, 121 - 123 : Red corner
+    103 - 108            : Yellow corner
+    109 - 114            : Green corner
+    115 - 120            : Blue corner
+
+Wall markers are 200x200 mm and 50 mm off the floor; game object markers
+are 100x100 mm.
 """
 
-class MARKER_TYPE(enum.Enum): # Keep something like this to determine if a marker is a wall or not.
-    BOX = enum.auto()    # This is a movable box. In 2025 this is a Sheep or a Gem
-    ARENA = enum.auto()     # These are the wall markers
-    CRATE = enum.auto()
-    DROP = enum.auto()
+
+class MARKER_TYPE(enum.Enum):
+    QUAFFLE = enum.auto()  # A coloured box you are trying to gather
+    SNITCH = enum.auto()  # The gold snitch, worth a x3 multiplier
+    ARENA = enum.auto()  # These are the wall markers
 
 
-
-class BASE_MARKER: # Base marker class that BOX_MARKER and ARENA_MARKER derive from.
-    team_marker_colors: dict = { # Colour definitions for each team defined in TEAMS
-        TEAM.RED: (255, 64, 0), # RED
-        TEAM.YELLOW: (255, 255, 32), # YELLOW
-        TEAM.GREEN: (50,255,0), # GREEN
-        TEAM.BLUE: (0, 100, 255), # BLUE
+class BASE_MARKER:  # Base marker class that QUAFFLE/SNITCH/ARENA derive from.
+    team_marker_colors: dict = {  # Colour definitions for each team defined in TEAMS
+        TEAM.RED: (255, 64, 0),  # RED
+        TEAM.YELLOW: (255, 255, 32),  # YELLOW
+        TEAM.GREEN: (50, 255, 0),  # GREEN
+        TEAM.BLUE: (0, 100, 255),  # BLUE
     }
+    snitch_color: tuple = (255, 215, 0)  # Gold
 
     def __init__(
         self,
@@ -50,28 +48,21 @@ class BASE_MARKER: # Base marker class that BOX_MARKER and ARENA_MARKER derive f
         self.owning_team: typing.Union[TEAM, None] = None
 
         # Sizes are in meters
-        self.size = 0.2 if self.type == MARKER_TYPE.ARENA else 0.08
+        self.size = 0.2 if self.type == MARKER_TYPE.ARENA else 0.1
 
     def __repr__(self) -> str:
         return f"<Marker type={self.type} owning_team={self.owning_team} />"
 
     @property
     def bounding_box_color(self) -> tuple:
-        if self.type == MARKER_TYPE.ARENA: # If it is a wall
-            # return tuple((125, 249, 225)) # Turquoise
-            return tuple(self.team_marker_colors[self.owning_team]) # Picks the team colour from above
-        # elif self.owning_team==TEAM.ARENA: # If it is a supply crate or drop
-        elif self.type == MARKER_TYPE.CRATE:
-            return tuple((215,128,0)) # Orange
-        elif self.type == MARKER_TYPE.DROP:
-            return tuple((215, 0, 255))  # Purple
-        else: 
-            return tuple((55,255,255)) # White
-        # else: # No owning team?
-            # return tuple((255,125,125)) # Pinky
+        if self.type == MARKER_TYPE.ARENA:  # If it is a wall
+            return tuple(self.team_marker_colors[self.owning_team])  # Picks the team colour from above
+        if self.type == MARKER_TYPE.SNITCH:
+            return tuple(self.snitch_color)  # Gold
+        return tuple(self.team_marker_colors[self.owning_team])  # Quaffle colour
 
 
-class ARENA_MARKER(BASE_MARKER): # Not much going on here. This represents a wall.
+class ARENA_MARKER(BASE_MARKER):  # Not much going on here. This represents a wall.
     def __init__(self, id: int, owner: TEAM) -> None:
         super().__init__(id, MARKER_TYPE.ARENA)
         self.owning_team = owner
@@ -80,61 +71,71 @@ class ARENA_MARKER(BASE_MARKER): # Not much going on here. This represents a wal
         return f"<Marker(ARENA) owning_team={self.owning_team} />"
 
 
-class BOX_MARKER(BASE_MARKER): # This is a game object rather than a wall. Add properties you want to keep track of
-    def __init__(
-        self, id: int, owner: TEAM, marker_type: MARKER_TYPE = MARKER_TYPE.BOX
-    ) -> None:
-        super().__init__(id, marker_type)
-        self.owning_team = owner
+class QUAFFLE_MARKER(BASE_MARKER):  # A coloured game object rather than a wall.
+    def __init__(self, id: int, colour: TEAM) -> None:
+        super().__init__(id, MARKER_TYPE.QUAFFLE)
+        self.owning_team = colour
+
+    def __repr__(self) -> str:
+        return f"<Marker(QUAFFLE) colour={self.owning_team} />"
 
 
-class MARKER(BASE_MARKER): # This is literally just how the code gets the different marker types.
+class SNITCH_MARKER(BASE_MARKER):  # The gold snitch, worth a x3 multiplier.
+    def __init__(self, id: int = 4) -> None:
+        super().__init__(id, MARKER_TYPE.SNITCH)
+
+    def __repr__(self) -> str:
+        return "<Marker(SNITCH) />"
+
+
+# Drops/crates existed in previous years; keep the alias for any residual
+# imports but it is no longer produced by by_id.
+BOX_MARKER = QUAFFLE_MARKER
+
+
+class MARKER(BASE_MARKER):  # This is literally just how the code gets the different marker types.
     @staticmethod
-    def by_id(id: int, team: typing.Union[TEAM, None] = None) -> BASE_MARKER: # team is currently unused, but it is referenced throughout the code. It is the team of the robot I believe (check this)
+    def by_id(id: int, team: typing.Union[TEAM, None] = None) -> BASE_MARKER:
         """
         Get a marker object from an id
 
-        Marker IDs are greater than 0, and usually won't go higher than 200. They are 
-        read as April tags, so use an online 6x6 April tag generator to test values, 
-        such as:
-        https://chaitanyantr.github.io/apriltag (remember to set to tag36h11 for this one)
+        Marker IDs are read as April tags, so use an online 6x6 April tag
+        generator to test values, such as:
+        https://chaitanyantr.github.io/apriltag (remember to set to tag36h11)
 
-        In 2025 low marker IDs (0-49) are Sheep and Gems.
+        In 2027 low marker IDs are in-game objects:
+            0-3: Quaffles (one per team colour)
+            4:   The Snitch
 
-        Markers 20-23 and 40-43 are Gems, with a pair of markers for each team.
-
-        The rest of the low markers are unowned sheep - their owning_team property is ARENA.
-
-        It is probably recommendable that you have duplicate marker IDs, so that any damaged
-        marker can be replaced by one with equivalent game meaning - in 2024 we made ID 0 and 
-        ID 20 equivalent.
-
-        Higher marker IDs (40+) will be part of the arena. These markers will be
-        spaced as in 2021-2022's competition (6 markers on each side of the Arena,
-        the first 50cm away from the wall and each subsequent marker 1m away from
-        there). In practice these markers start at 100.
-
-        In 2025 there are also Lair markers, one of each of the team's lairs. These are numbered 50-53.
+        Higher marker IDs (100+) are part of the arena. These markers are the
+        arena walls, grouped per team corner:
+            100-102, 121-123: Red corner
+            103-108:         Yellow corner
+            109-114:         Green corner
+            115-120:         Blue corner
         """
-
-        # Calculate team area from Arean marker ID
-        # (((ID - 100) + 3) % 23) // 6
 
         ARENA_WALL_LOWER_ID = 100
         if id >= ARENA_WALL_LOWER_ID:
-            owner_index = (((id - 100) + 3) % 23) // 6
-            return ARENA_MARKER(id, TEAM[f"T{owner_index%4}"])
-        
- 
-        wrappingId = id % 48 # Make sure that the ID range wraps after 20 values.
-        marker_type: MARKER_TYPE = MARKER_TYPE.BOX
-        if wrappingId <= 23: # If it is a Supply Crate
-            owning_team = TEAM["ARENA"] # Set to the corresponding TEAM enum.
-            marker_type = MARKER_TYPE.CRATE
-        else: # It is a Supply Drop
-            owning_team = TEAM["ARENA"]
-            marker_type = MARKER_TYPE.DROP
+            # 100-102, 121-123: Red corner
+            # 103-108:         Yellow corner
+            # 109-114:         Green corner
+            # 115-120:         Blue corner
+            if id <= 102 or id >= 121:
+                owner = TEAM.T0
+            elif id <= 108:
+                owner = TEAM.T1
+            elif id <= 114:
+                owner = TEAM.T2
+            else:
+                owner = TEAM.T3
+            return ARENA_MARKER(id, owner)
 
-        return BOX_MARKER(id, owning_team, marker_type)
+        if id == 4:
+            return SNITCH_MARKER(id)
 
+        if 0 <= id <= 3:
+            return QUAFFLE_MARKER(id, TEAM[f"T{id}"])
 
+        # Unknown game object: label it as a quaffle without a colour.
+        return QUAFFLE_MARKER(id, TEAM.ARENA)

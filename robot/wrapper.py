@@ -15,7 +15,8 @@ import random
 import typing
 
 from datetime import datetime
-from smbus2 import SMBus
+from robot.greengiant import (OUTPUT, INPUT, INPUT_ANALOG, INPUT_PULLUP, PWM_SERVO, TIMER,
+                              UltrasonicSensor, open_bus)
 
 from robot import vision
 from robot.cytron import CytronBoard
@@ -101,6 +102,8 @@ class Robot():
             start_data = self.wait_start()
             self.zone = start_data['zone']
             self.mode = start_data['mode']
+            self._vision.zone = self.zone
+            self._vision.post_processor.zone = self.zone
         else:
             _logger.warning("Robot initalized but usercode running before"
                            "`robot.wait_start`. Robot will not wait for the "
@@ -113,7 +116,7 @@ class Robot():
             raise RuntimeError("Robot object is acquires hardware locks for its"
                                " sole use and so can only be used once.")
 
-        self.bus = SMBus(1)
+        self.bus = open_bus(1)
         self._green_giant = GreenGiantInternal(self.bus)
         self._gg_version = self._green_giant.get_version()
         if self._gg_version >= 10:
@@ -147,6 +150,8 @@ class Robot():
             raise ValueError("camera must inherit from vision.Camera")
         self.res = self.camera.res
 
+        # Vision is created before wait_start() sets the real zone below.
+        # It is rebuilt/repointed once the start signal has been received.
         self._vision = vision.Vision(self.zone, camera=self.camera)
 
     def report_hardware_status(self):
@@ -276,12 +281,24 @@ class Robot():
 
         settings = json.loads(d)
 
-        assert "zone" in settings, "zone must be in startup info"
-        if settings["zone"] not in range(4):
-            raise ValueError(
-                "zone must be in range 0-3 inclusive -- value of %i is invalid"
-                % settings["zone"])
-        settings["zone"] = TEAM[f"T{settings['zone']}"]
+        # Shepherd sends either an explicit colour/team (2027+) or a
+        # 1-based zone number from the arena USB stick (1-4).
+        if "colour" in settings or "team" in settings:
+            colour = settings.get("colour", settings.get("team"))
+            settings["zone"] = TEAM[colour]
+        else:
+            assert "zone" in settings, "zone must be in startup info"
+            try:
+                zone_i = int(settings["zone"])
+            except (TypeError, ValueError):
+                zone_i = 1
+            if zone_i == 0:
+                zone_i = 1
+            if zone_i not in range(1, 5):
+                raise ValueError(
+                    "zone must be in range 1-4 inclusive -- value of %i is invalid"
+                    % zone_i)
+            settings["zone"] = TEAM[f"T{zone_i - 1}"]
 
         self._start_pressed = True
 
@@ -302,6 +319,11 @@ class Robot():
 
         # This blocks till we get start info
         start_info = self._get_start_info()
+
+        self.zone = start_info["zone"]
+        self.mode = start_info.get("mode", self.mode)
+        self._vision.zone = self.zone
+        self._vision.post_processor.zone = self.zone
 
         _logger.info("Robot started!\n")
         self.camera._start_thread()

@@ -3,20 +3,14 @@
 April tags a marker recognition system. Also performs convince functions for use
 by shepherd"""
 
-import importlib.util
-
-has_picamera = importlib.util.find_spec("picamera") is not None
-
-if not has_picamera:
-    import sys
-    import fake_rpi
-
-    sys.modules["RPi"] = fake_rpi.RPi
-    sys.modules["RPi.GPIO"] = fake_rpi.RPi.GPIO
-    sys.modules["picamera"] = fake_rpi.picamera
-    sys.modules["smbus2"] = fake_rpi.smbus
-
 import sys
+
+# No fakes needed: on the Alpine brain every module the library touches is
+# provided for real - picamera2 (libcamera-backed shim), smbus2 (pip wheel on
+# /dev/i2c-N), wiringpi (image shim). The legacy fake_rpi stand-ins were only
+# installed "when picamera is missing", which is always here, and importing
+# fake_rpi prints scary warnings on every user-code start while quietly
+# shadowing modules that no code in this image uses.
 
 # This log import configures our logging for us, but we don't want to
 # provide it as part of this package.

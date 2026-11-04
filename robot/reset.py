@@ -9,16 +9,16 @@ has done or wants to do; usercode yields to shepherd always.
 A nicer solution using class methods:
 https://stackoverflow.com/a/45799209/5006710
 """
-from smbus2 import SMBus
 import robot.cytron as c
 import robot.greengiant as gg
+from robot.greengiant import open_bus
 
 
 def reset():
     """Resets the robot components to their default state.
     Used by Shepherd when the Stop button is pressed.
     """
-    bus = SMBus(1)
+    bus = open_bus(1)
     version = gg.GreenGiantInternal(bus).get_version()
 
     if version < 10:

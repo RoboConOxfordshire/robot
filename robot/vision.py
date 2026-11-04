@@ -556,7 +556,12 @@ class PostProcessor(threading.Thread):
                 if self._bounding_box:
                     frame = self._draw_bounding_box(frame, detections)
                 if self._save:
-                    cv2.imwrite(IMAGE_TO_SHEPHERD_PATH, frame)
+                    ok, buf = cv2.imencode(".jpg", frame)
+                    if ok:
+                        tmp_path = IMAGE_TO_SHEPHERD_PATH + ".tmp"
+                        with open(tmp_path, "wb") as f:
+                            f.write(buf.tobytes())
+                        os.replace(tmp_path, IMAGE_TO_SHEPHERD_PATH)
                 if self._usb_stick:
                     self._write_to_usb(capture, detections)
                 if self._send_to_sheep:
@@ -573,12 +578,15 @@ class ATDetections:
 def detect_markers(camera, at_detector, detections, lock):
     while True:
         capture = camera.capture()
-        # print(time.perf_counter() - capture.timestamp, "marker")
-        s = time.perf_counter()
-        output = at_detector.detect(capture.grey, estimate_tag_pose=True,
-                                    camera_params=camera.params)
-        # print(time.perf_counter() - capture.timestamp, "marker")
-        # print(time.perf_counter() - s)
+        if at_detector is None:
+            output = []
+        else:
+            # print(time.perf_counter() - capture.timestamp, "marker")
+            s = time.perf_counter()
+            output = at_detector.detect(capture.grey, estimate_tag_pose=True,
+                                        camera_params=camera.params)
+            # print(time.perf_counter() - capture.timestamp, "marker")
+            # print(time.perf_counter() - s)
         lock.acquire()
         detections.output = output
         detections.frame = capture.colour
@@ -603,14 +611,18 @@ class Vision():
             "{}/lib64".format(at_path)
         )
 
-        self.at_detector = AT.Detector(searchpath=at_lib_path,
-                                       families="tag36h11",
-                                       nthreads=4,
-                                       quad_decimate=2.0,
-                                       quad_sigma=0.0,
-                                       refine_edges=1,
-                                       decode_sharpening=0.25,
-                                       debug=0)
+        try:
+            self.at_detector = AT.Detector(searchpath=at_lib_path,
+                                           families="tag36h11",
+                                           nthreads=4,
+                                           quad_decimate=2.0,
+                                           quad_sigma=0.0,
+                                           refine_edges=1,
+                                           decode_sharpening=0.25,
+                                           debug=0)
+        except (OSError, RuntimeError) as e:
+            print("apriltag library unavailable (%s); marker detection disabled" % e, flush=True)
+            self.at_detector = None
 
         self.camera = camera
 

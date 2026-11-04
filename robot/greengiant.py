@@ -1,3 +1,4 @@
+import os
 import time
 
 """A set of constants and interfaces for controlling the green giant over I2C"""
@@ -148,6 +149,70 @@ def write_high_low_data(bus, address, data):
     bus.write_byte_data(_GG_I2C_ADDR, address + 1, value & 0xff)
 
 
+# A version below 10 is a GreenGiant rather than a PiLow, and in bench mode
+# every register access is turned into a no-op, so pick a GreenGiant version:
+# it is the simpler hardware path and never touches the PiLow power domains.
+_GG_BENCH_VERSION = 3
+
+
+def _bench_mode():
+    """True when ROBOT_BENCH_MODE is set, allowing the library to run with no
+    board attached (vision and camera only, no motors/servos/power)."""
+    return os.environ.get("ROBOT_BENCH_MODE", "").strip().lower() in (
+        "1", "true", "yes", "on")
+
+
+class _BenchBus:
+    """Stands in for an SMBus when running without hardware: every access
+    succeeds with harmless values so vision code runs unchanged."""
+
+    def __init__(self, real_bus=None):
+        self._real = real_bus
+
+    def read_byte_data(self, address, register):
+        return 0
+
+    def read_word_data(self, address, register):
+        return 0
+
+    def write_byte_data(self, address, register, value):
+        pass
+
+    def write_word_data(self, address, register, value):
+        pass
+
+    def write_byte(self, address, value):
+        pass
+
+    def read_i2c_block_data(self, address, register, length):
+        return bytearray(length)
+
+    def write_i2c_block_data(self, address, register, data):
+        pass
+
+    def close(self):
+        pass
+
+
+def open_bus(number=1):
+    """Open the I2C bus, or a stand-in when running in bench mode."""
+    from smbus2 import SMBus
+
+    if _bench_mode():
+        return _BenchBus()
+    try:
+        return SMBus(number)
+    except OSError as e:
+        if _bench_mode():
+            return _BenchBus()
+        raise RuntimeError(
+            f"Cannot open I2C bus {number} ({e}).\n"
+            "The brain enables it with dtparam=i2c_arm=on and the i2c-bcm2835 "
+            "module; check /var/log/shepherd.log for what bring-up found. Set "
+            "ROBOT_BENCH_MODE=1 to run without a board (camera/vision only)."
+        ) from e
+
+
 class GreenGiantInternal():
     """Intertions for use with the user
     not intended to be part of the robot API"""
@@ -205,7 +270,28 @@ class GreenGiantInternal():
         self._bus.write_byte_data(_GG_I2C_ADDR, _GG_USER_LED, int(on))
 
     def get_version(self):
-        return self._bus.read_byte_data(_GG_I2C_ADDR, _GG_VERSION)
+        if _bench_mode():
+            return _GG_BENCH_VERSION
+        try:
+            return self._bus.read_byte_data(_GG_I2C_ADDR, _GG_VERSION)
+        except OSError as e:
+            if _bench_mode():
+                print("=" * 60)
+                print("WARNING: no RoboCon board answering on I2C bus 1 "
+                      f"(address 0x{_GG_I2C_ADDR:02x}): {e}")
+                print("Running in BENCH MODE because ROBOT_BENCH_MODE is set:")
+                print("  - no motors, servos, GPIO or power control will work")
+                print("  - camera and vision work normally")
+                print("Unset ROBOT_BENCH_MODE on the real robot.")
+                print("=" * 60)
+                return _GG_BENCH_VERSION
+            raise RuntimeError(
+                f"No RoboCon board on I2C bus 1 (address 0x{_GG_I2C_ADDR:02x}): {e}\n"
+                "Check the board is powered and connected, and that the brain has "
+                "enabled it - /var/log/shepherd.log shows the level shifter (GPIO18) "
+                "and board bring-up state. Set ROBOT_BENCH_MODE=1 to run without a "
+                "board (camera/vision only)."
+            ) from e
 
     def get_battery_voltage(self):
         # both GG and PiLow use a 1/3 divider and a 4.096v reference giving a max readable voltage of ~12.3v
@@ -215,7 +301,12 @@ class GreenGiantInternal():
         """Return the fixed voltage reading. The number read here is sampling the 4.096v reference using the VCC rail (GG only)
         This magic number back calculates what the voltage is on the VCC rail for more accurate voltage readings.
         """
-        return _GG_FVR_VOLTS * _GG_BATTERY_ADC_MAX / read_high_low_data(self._bus, _GG_FVR_H)
+        raw = read_high_low_data(self._bus, _GG_FVR_H)
+        if raw == 0:
+            # No board (bench mode) or an unpowered reference rail: report the
+            # nominal value rather than dividing by zero.
+            return _GG_FVR_VOLTS
+        return _GG_FVR_VOLTS * _GG_BATTERY_ADC_MAX / raw
 
 
 class GreenGiantGPIOPin():
