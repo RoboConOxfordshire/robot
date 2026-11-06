@@ -510,7 +510,9 @@ class GreenGiantGPIOPinList():
             internal_index = _decrement_pin_index(index)
         else:
             internal_index = index
-        self._list[internal_index].__setitem__(value)
+        # GreenGiantGPIOPin has no __setitem__; set_value routes by pin mode
+        # (PWM_SERVO -> pwm, OUTPUT -> digital).
+        self._list[internal_index].set_value(value)
 
     def update_modes(self):
         """All of the modes must be updated in order due to a bug in the GG

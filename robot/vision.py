@@ -19,13 +19,52 @@ from typing import NamedTuple, Any
 from robot.game_config import MARKER, WHITE
 from .game_config import BASE_MARKER as MarkerInfo
 
-import cv2
-import numpy as np
-import picamera2
+class _LazyModule(object):
+    def __init__(self, name):
+        object.__setattr__(self, "_name", name)
+        object.__setattr__(self, "_mod", None)
+
+    def _load(self):
+        if object.__getattribute__(self, "_mod") is None:
+            import importlib
+            m = importlib.import_module(object.__getattribute__(self, "_name"))
+            object.__setattr__(self, "_mod", m)
+        return object.__getattribute__(self, "_mod")
+
+    def __getattr__(self, name):
+        return getattr(self._load(), name)
+
+
+# Lazy heavy modules: cv2 drags in a huge native stack (libLLVM/openblas)
+# that takes seconds to load on a Pi Zero 2 W, so defer them keeps
+# `import robot` fast.
+cv2 = _LazyModule("cv2")
+np = _LazyModule("numpy")
+picamera2 = _LazyModule("picamera2")
+
+# ...but warm them in the background right away. If the capture thread's first
+# cv2 call triggers the load itself, it stalls for seconds mid-frame, which
+# trips the camera watchdog into a restart loop.
+_cv2_warm = threading.Event()
+
+def _warm_heavy_modules():
+    try:
+        cv2.IMREAD_COLOR   # noqa: B018 - attribute access forces the import
+        np.array
+        picamera2.Picamera2
+    finally:
+        _cv2_warm.set()
+
+threading.Thread(target=_warm_heavy_modules, daemon=True).start()
+
 import robot.apriltags3 as AT
 
-# TODO put all of the paths together
-IMAGE_TO_SHEPHERD_PATH = "/home/pi/shepherd/shepherd/static/image.jpg"
+# Path where the camera image is written for shepherd web UI. Honours
+# SHEPHERD_CAMERA_IMAGE so the write can go to tmpfs instead of wearing the
+# SD card on every frame.
+IMAGE_TO_SHEPHERD_PATH = os.environ.get(
+    "SHEPHERD_CAMERA_IMAGE", "/tmp/shepherd/image.jpg")
+os.makedirs(os.path.dirname(IMAGE_TO_SHEPHERD_PATH), exist_ok=True)
 
 
 class Marker():
@@ -76,6 +115,7 @@ class Capture:
     def __init__(self):
         self.colour = None
         self.grey = None
+        self.yuv = None
         self.timestamp = None
 
 
@@ -106,13 +146,12 @@ PI_2_1_CAMERA_FOCAL_LENGTHS = {
     (1920, 1080): (2908.464406719262, 2908.464406719262)
 }
 
-#  for the pi camera 2.1 we want to take in a "full" resolution, then scale to the correct resolution
+# for the pi camera 2.1 we want to take in a "full" resolution, then scale to the correct resolution
 PI_2_1_CAMERA_RES_MAP = {
     (640, 480): (1640, 1232),
     (1280, 720): (1640, 922),
     (1640, 1232): (1640, 1232),
-    (1920, 1080): (1640, 922),  # TODO think of a more sensible option for this, we shouldn't really be scaling up, check reliability of taking full sensor images, and how that will limit the maximum framerate
-    # TODO more resolutions, make sure that the ones supported here are also the ones written in the docs
+    (1920, 1080): (1640, 922),  # Scaled from 1640x922 sensor mode; verify framerate impact
 }
 
 PI_1_3_CAMERA_FOCAL_LENGTHS = {
@@ -180,13 +219,15 @@ def pi_cam_capture(cam, capture, lock, img_queue):
         else:
             # other cameras give more scaled outputs, so use them directly
             img=raw
-        lock.acquire()
-        capture.colour = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        capture.grey = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
-        capture.timestamp = time.perf_counter()
-        lock.release()
+        with cam._frame_cond:
+            capture.colour = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            capture.grey = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+            capture.timestamp = time.perf_counter()
+            cam._frame_cond.notify_all()
         img_queue.append(img)
-        time.sleep(0.05)
+        # No artificial sleep here: the camera sensor itself paces the loop
+        # (~11 fps at this resolution), and an extra sleep used to halve the
+        # delivered frame rate.
 
 
 def prepare_for_stream(img_queue):
@@ -206,6 +247,11 @@ class RoboConPiCamera(Camera):
     def __init__(self, start_res=(640, 480), focal_lengths=None):
         self.latest_capture = Capture()
         self.lock = threading.Lock()
+        # Condition sharing self.lock: capture() waits on this instead of
+        # hammering the lock in a poll loop. A tight acquire/release poll
+        # starves the capture thread via GIL convoy, stalling libcamera
+        # request completions for seconds and tripping the watchdog.
+        self._frame_cond = threading.Condition(self.lock)
         self.queue = []
 
         os.environ["LIBCAMERA_LOG_LEVELS"] = "4"
@@ -262,6 +308,10 @@ class RoboConPiCamera(Camera):
 
     def _start_thread(self):
         if self._thread_stopping:
+            # The capture loop calls cv2 on its very first iteration; wait for
+            # the background warm-up so the thread doesn't stall mid-frame and
+            # trip the watchdog.
+            _cv2_warm.wait(timeout=15)
             self.latest_capture.timestamp = time.perf_counter()
             self._thread_stopping = False
             self._thread = threading.Thread(target=functools.partial(pi_cam_capture, self, self.latest_capture,
@@ -270,10 +320,20 @@ class RoboConPiCamera(Camera):
 
     def _watchdog(self):
         while True:
+            # Poll gently: a bare busy-spin here burns a core and, worse,
+            # races the capture thread into camera restarts during normal
+            # frame gaps (e.g. while AprilTag detection holds the cores).
+            time.sleep(0.2)
             if not self._thread_stopping:
-                if self.latest_capture.timestamp < time.perf_counter() - 1:
+                # 3s: the first frame after a camera (re)start needs ~1-2s for
+                # auto-exposure to converge; a 1s threshold trips the watchdog
+                # on every start and triggers pointless restart loops.
+                if self.latest_capture.timestamp < time.perf_counter() - 3:
                     print("Camera system timeout. This may be due to excessive vibration, if message appears frequently please contact RoboCon. Attempting to restart camera automatically.")
                     self._thread_stopping = True  # As the thread just hangs can't reconnect
+                    # Let the capture thread leave capture_array before the
+                    # camera is torn down underneath it.
+                    time.sleep(0.3)
 
                     done = False
                     while not done:
@@ -318,18 +378,16 @@ class RoboConPiCamera(Camera):
                 self._start_thread()
 
     def capture(self):
-        # TODO Make this return the YUV capture
         capture = Capture()
-        while True:
-            self.lock.acquire()
+        # Block on the condition (GIL released while waiting) rather than
+        # spinning on the lock - see the note in __init__.
+        with self._frame_cond:
+            while self.latest_capture.colour is None:
+                self._frame_cond.wait(timeout=0.1)
             capture.colour = self.latest_capture.colour
             capture.grey = self.latest_capture.grey
+            capture.yuv = self.latest_capture.yuv
             capture.timestamp = self.latest_capture.timestamp
-            self.lock.release()
-            if capture.colour is not None:
-                break
-
-        # print(time.perf_counter() - capture.timestamp, "cam")
 
         return capture
 
@@ -480,7 +538,9 @@ class PostProcessor(threading.Thread):
 
         self._stop_event = threading.Event()
         self._stop_event.clear()
-
+        self._writes = 0
+        self._last_write_ts = 0.0
+        self._enc_writes = 0
         # This calls our overridden `run` method
         self.start()
 
@@ -546,26 +606,47 @@ class PostProcessor(threading.Thread):
         """
         while not self._stop_event.is_set():
             try:
-                # TODO do we need pass colour infomation?
+                # Pass full capture (includes colour, grey, yuv, timestamp) to postprocessor
                 # pylint: disable=unused-variable
                 (capture, detections) = self._owner.frames_to_postprocess.get(timeout=1)
             except queue.Empty:
                 pass
             else:
-                frame = capture
-                if self._bounding_box:
-                    frame = self._draw_bounding_box(frame, detections)
-                if self._save:
-                    ok, buf = cv2.imencode(".jpg", frame)
-                    if ok:
-                        tmp_path = IMAGE_TO_SHEPHERD_PATH + ".tmp"
-                        with open(tmp_path, "wb") as f:
-                            f.write(buf.tobytes())
-                        os.replace(tmp_path, IMAGE_TO_SHEPHERD_PATH)
-                if self._usb_stick:
-                    self._write_to_usb(capture, detections)
-                if self._send_to_sheep:
-                    pass
+                # Never let an exception kill this thread: it is the only
+                # writer of the camera image the web UI streams. A single bad
+                # frame/marker (e.g. a data quirk in game_config) dying here
+                # used to freeze the UI until the next round.
+                try:
+                    frame = capture
+                    now = time.perf_counter()
+                    if self._last_write_ts and now - self._last_write_ts >= 1.0:
+                        print("postprocessor: %d writes in last second" % self._writes, flush=True)
+                        self._writes = 0
+                    self._last_write_ts = now
+                    if self._bounding_box:
+                        frame = self._draw_bounding_box(frame, detections)
+                    if self._save:
+                        t0=time.perf_counter()
+                        ok, buf = cv2.imencode(".jpg", frame)
+                        t1=time.perf_counter()
+                        if ok:
+                            self._enc_writes += 1
+                            if self._enc_writes % 10 == 0:
+                                print("postprocessor encode: %d writes, last %.2fs" % (self._enc_writes, t1-t0), flush=True)
+                            tmp_path = IMAGE_TO_SHEPHERD_PATH + ".tmp"
+                            with open(tmp_path, "wb") as f:
+                                f.write(buf.tobytes())
+                            os.replace(tmp_path, IMAGE_TO_SHEPHERD_PATH)
+                        self._writes += 1
+                        self._last_write_ts = time.perf_counter()
+                        if self._writes % 25 == 0:
+                            print("postprocessor: %d writes total" % self._writes, flush=True)
+                    if self._usb_stick:
+                        self._write_to_usb(capture, detections)
+                    if self._send_to_sheep:
+                        pass
+                except Exception:
+                    logging.exception("postprocessing frame failed")
 
 
 class ATDetections:
@@ -575,23 +656,37 @@ class ATDetections:
         self.timestamp = None
 
 
-def detect_markers(camera, at_detector, detections, lock):
+def detect_markers(camera, at_detector, detections, lock, vision):
+    # Capture runs at full speed (~11 fps) while detection only runs every
+    # DETECT_EVERY frames. Every captured frame is queued for the post
+    # processor to write to the shepherd UI at capture rate, tagged with the
+    # latest detection results, so the live view never drops below capture
+    # speed while marker positions update at the detection rate.
+    DETECT_EVERY = 6
+    frame_count = 0
+    output = []
     while True:
         capture = camera.capture()
         if at_detector is None:
             output = []
         else:
-            # print(time.perf_counter() - capture.timestamp, "marker")
-            s = time.perf_counter()
-            output = at_detector.detect(capture.grey, estimate_tag_pose=True,
-                                        camera_params=camera.params)
-            # print(time.perf_counter() - capture.timestamp, "marker")
-            # print(time.perf_counter() - s)
+            if frame_count % DETECT_EVERY == 0:
+                s = time.perf_counter()
+                output = at_detector.detect(capture.grey, estimate_tag_pose=True,
+                                            camera_params=camera.params)
         lock.acquire()
         detections.output = output
         detections.frame = capture.colour
         detections.timestamp = capture.timestamp
         lock.release()
+        # Queue every frame so the post processor writes image.jpg at capture
+        # rate even while detection lags behind. The queue contract is
+        # (colour-array, detection-list) — the same shape R.see() uses.
+        try:
+            vision.frames_to_postprocess.put((capture.colour, output), block=False)
+        except queue.Full:
+            pass
+        frame_count += 1
 
 
 class Vision():
@@ -629,7 +724,7 @@ class Vision():
         self.detections = ATDetections()
         self.lock = threading.Lock()
         self.at_thread = threading.Thread(target=functools.partial(detect_markers, self.camera,
-                                                                   self.at_detector, self.detections, self.lock))
+                                                                   self.at_detector, self.detections, self.lock, self))
         self.at_thread.start()
 
         self.frames_to_postprocess = queue.Queue(max_queue_size)

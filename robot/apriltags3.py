@@ -386,13 +386,12 @@ class Detector(object):
             self.libc.apriltag_detector_destroy(self.tag_detector_ptr)
 
     def detect(self, img, estimate_tag_pose=False, camera_params=None):
-        """Run detectons on the provided image. The image must be a grayscale
+        """Run detections on the provided image. The image must be a grayscale
            image of type np.uint8.
-        # TODO get rid of the magic numbers
         """
 
-        assert len(img.shape) == 2
-        assert img.dtype == np.uint8
+        assert len(img.shape) == 2, "Image must be 2D grayscale"
+        assert img.dtype == np.uint8, "Image dtype must be uint8"
 
         c_img = self._convert_image(img)
 
@@ -427,7 +426,6 @@ class Detector(object):
             detection.corners = corners
 
             if estimate_tag_pose:
-                # TODO better to ask for forgiveness than permission
                 if camera_params is None:
                     raise ValueError(
                         "camera_params must be provided to detect if estimate_tag_pose is set to True")
@@ -449,7 +447,11 @@ class Detector(object):
                     ctypes.byref(info), ctypes.byref(pose))
 
                 detection.pose_R = _matd_get_array(pose.R).copy()
-                detection.pose_T = _matd_get_array(pose.t).copy()
+                # Flatten to 1-D: pose.t is a 3x1 matd, and numpy 2.x removed
+                # implicit conversion of size-1 arrays to Python scalars, so
+                # the combinations() below would feed 1-element arrays into
+                # float() and raise TypeError.
+                detection.pose_T = _matd_get_array(pose.t).copy().flatten()
                 detection.pose_err = err
 
                 detection.dist = np.linalg.norm(detection.pose_T)
@@ -458,9 +460,8 @@ class Detector(object):
                 rotations = rotations.as_euler("xyz", degrees=True)
                 detection.rotation = Coords(*rotations)
 
-                # Find the rotation about an axis by using the arctan2 of the
-                # two other vectors perpendicular to that axis
-                # TODO make clearer and only compute x, y
+                # Find the rotation about each axis using arctan2 of the
+                # perpendicular vector components
                 bearings = (float(np.degrees(np.arctan2(u, v)))
                             for u, v in itertools.combinations(detection.pose_T, 2))
                 detection.bearing = Coords(*bearings)

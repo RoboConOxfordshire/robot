@@ -48,18 +48,20 @@ class BASE_MARKER:  # Base marker class that QUAFFLE/SNITCH/ARENA derive from.
         self.owning_team: typing.Union[TEAM, None] = None
 
         # Sizes are in meters
-        self.size = 0.2 if self.type == MARKER_TYPE.ARENA else 0.1
+        self.size = 0.16 if self.type == MARKER_TYPE.ARENA else 0.08
 
     def __repr__(self) -> str:
         return f"<Marker type={self.type} owning_team={self.owning_team} />"
 
     @property
     def bounding_box_color(self) -> tuple:
-        if self.type == MARKER_TYPE.ARENA:  # If it is a wall
-            return tuple(self.team_marker_colors[self.owning_team])  # Picks the team colour from above
+        # Unknown-id markers are labelled QUAFFLE with owning_team=ARENA ("no
+        # colour"), which is not in team_marker_colors; a KeyError here kills
+        # the postprocessor thread and stops every frame reaching the web UI.
+        default = (200, 200, 200)
         if self.type == MARKER_TYPE.SNITCH:
             return tuple(self.snitch_color)  # Gold
-        return tuple(self.team_marker_colors[self.owning_team])  # Quaffle colour
+        return tuple(self.team_marker_colors.get(self.owning_team, default))
 
 
 class ARENA_MARKER(BASE_MARKER):  # Not much going on here. This represents a wall.
@@ -103,9 +105,13 @@ class MARKER(BASE_MARKER):  # This is literally just how the code gets the diffe
         generator to test values, such as:
         https://chaitanyantr.github.io/apriltag (remember to set to tag36h11)
 
-        In 2027 low marker IDs are in-game objects:
-            0-3: Quaffles (one per team colour)
-            4:   The Snitch
+        In 2027 marker IDs 0-16 are in-game objects, four quaffles per team
+        colour and the snitch:
+            0-3:    Red quaffles
+            4-7:    Yellow quaffles
+            8-11:   Green quaffles
+            12-15:  Blue quaffles
+            16:     The Snitch
 
         Higher marker IDs (100+) are part of the arena. These markers are the
         arena walls, grouped per team corner:
@@ -114,6 +120,17 @@ class MARKER(BASE_MARKER):  # This is literally just how the code gets the diffe
             109-114:         Green corner
             115-120:         Blue corner
         """
+
+        if 0 <= id <= 15:
+            # Four quaffles per team: id // 4 selects the team colour.
+            return QUAFFLE_MARKER(id, TEAM[f"T{id // 4}"])
+
+        if id == 16:
+            return SNITCH_MARKER(id)
+
+        # 17-99: not a defined game object; treat as an unowned arena marker.
+        if id < 100:
+            return ARENA_MARKER(id, TEAM.ARENA)
 
         ARENA_WALL_LOWER_ID = 100
         if id >= ARENA_WALL_LOWER_ID:
@@ -130,12 +147,3 @@ class MARKER(BASE_MARKER):  # This is literally just how the code gets the diffe
             else:
                 owner = TEAM.T3
             return ARENA_MARKER(id, owner)
-
-        if id == 4:
-            return SNITCH_MARKER(id)
-
-        if 0 <= id <= 3:
-            return QUAFFLE_MARKER(id, TEAM[f"T{id}"])
-
-        # Unknown game object: label it as a quaffle without a colour.
-        return QUAFFLE_MARKER(id, TEAM.ARENA)

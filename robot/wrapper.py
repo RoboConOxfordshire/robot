@@ -77,6 +77,7 @@ class Robot():
 
         self._initialised = False
         self._start_pressed = False
+        self._start_settings = None
         self._warnings = []
 
         self._parse_cmdline()
@@ -273,6 +274,12 @@ class Robot():
 
     def _get_start_info(self):
         """Get the start infomation from the fifo which was passed as an arg"""
+        # Guard against a second call: the fifo has already been drained and its
+        # writer has closed, so a blocking open().read() would hang forever.
+        # Return the settings already received instead.
+        if self._start_pressed and getattr(self, "_start_settings", None) is not None:
+            return self._start_settings
+
         f = open(self.startfifo, "r")
         d = f.read()
         f.close()
@@ -302,6 +309,7 @@ class Robot():
 
         self._start_pressed = True
 
+        self._start_settings = settings
         return settings
 
     def wait_start(self):
