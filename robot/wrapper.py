@@ -186,7 +186,7 @@ class Robot():
         _logger.info("------HARDWARE REPORT------")
         #_logger.info("Time:   %s", datetime.now().strftime('%Y-%m-%d %H:%M:%S')) 
         # no RTC on new boards, perhaps use a "run number" increment instead?
-        _logger.info("Patch Version:     2025_Ox_Launch_2")
+        _logger.info("Patch Version:     2027_Ox_Launch_Alpha")
         _logger.info(battery_str)
         #_logger.info("ADC Max:           %.2fv", self._adc_max)
         _logger.info("Robocon Board: Yes (v%d)", self._gg_version)
